@@ -81,7 +81,7 @@ jobs:
         id: pw
         shell: bash
         run: |
-          V=$(python -c "import playwright; print(playwright.__version__)")
+          V=$(python -c "from importlib.metadata import version; print(version('playwright'))")
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Playwright version: $V"
 
