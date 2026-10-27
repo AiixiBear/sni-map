@@ -11,10 +11,14 @@
 ## ✨ 功能
 
 - **域名 → 自訂 IP 映射**：等價於 `curl --resolve`，但作用於完整瀏覽器
+- **子域名自動覆蓋**：`www.a.com` 自動展開成 `a.com` + `*.a.com`，靜態資源免手動設定
+- **追加マッピング**：頁面引用的外部域名（如 API、CDN）也能一併映射
+- **失敗域名診斷**：載入完成後自動列出所有 `requestfailed` 的域名
 - **信使域名池**：用未被封鎖的 Cloudflare 域名解析出可用邊緣 IP
-- **`/cdn-cgi/trace` 節點查詢**：即時顯示命中哪個 CF 邊緣節點（`HKG` / `NRT` / `TPE` …）
+- **`/cdn-cgi/trace` 節點查詢**：即時顯示命中哪個 CF 邊緣節點（`HKG` / `NRT` / `KHH` …）
 - **離線瀏覽器路徑**：可手動指定 Playwright 瀏覽器所在資料夾，適合內網 / 無網環境
-- **自動偵測瀏覽器**：解壓到程式同目錄時免設定
+- **自動偵測瀏覽器**：解壓到程式同目錄時免設定，支援帶版本號的資料夾名
+- **可捲動介面**：小視窗也不會擠破版面
 - **深 / 淺色主題**、日文介面
 - **完整日誌**：GUI ログ + `app.log` + stdout 三通道
 
@@ -28,32 +32,41 @@
 
 ## 🚀 下載即用（一般使用者）
 
-### 1. 到 [Releases](../../releases) 頁面下載**兩個** zip
+### 1. 到 [Releases](../../releases) 頁面下載**兩個**檔案
 
 | 檔案 | 內容 | 大小 |
 |---|---|---|
-| `sni-tool-vX.Y.Z-windows.zip` | 主程式（含 Playwright driver，不含瀏覽器） | 約 40–60 MB |
+| `sni-tool-vX.Y.Z-windows.exe` | 主程式（單一 exe，onefile） | 約 200–300 MB |
 | `playwright-browsers-vX.Y.Z-windows.zip` | Chromium 瀏覽器本體 | 約 150–200 MB（壓縮後） |
 
-> ⚠️ **兩個 zip 必須從同一個 Release 下載**。混用不同版本的 app 和瀏覽器會導致啟動失敗。
+> ⚠️ **兩個檔案必須從同一個 Release 下載**。混用不同版本會導致啟動失敗。
+>
+> ⏱ **首次啟動需等待 10–30 秒**（onefile 模式會把內部檔案解壓到臨時目錄），
+> 第二次啟動仍需幾秒。如果頻繁使用、想要更快的啟動速度，
+> 請自行從原始碼用 `--onedir` 模式建置（見下方說明）。
 
-### 2. 解壓到**同一個資料夾**
+### 2. 解壓瀏覽器 zip 到 exe 同目錄
 
 ```
 sni-tool\
-├── app.exe
-├── _internal\
-└── playwright-browsers\      ← 瀏覽器 zip 解壓到這裡
+├── sni-tool-v1.0.0-windows.exe
+└── playwright-browsers\           ← 瀏覽器 zip 解壓到這裡
     └── chromium-XXXX\
+        └── chrome-win64\
+            └── chrome.exe
 ```
 
-### 3. 雙擊 `app.exe`
+資料夾名稱不一定要是 `playwright-browsers`，`playwright-browsers-v1.0.0-windows` 這類帶版本號的名稱也能被自動偵測。
 
-啟動時會自動偵測 `playwright-browsers\`，日誌會顯示：
+### 3. 雙擊 exe
+
+啟動時會自動偵測瀏覽器資料夾，日誌會顯示：
 
 ```
 [ブラウザパス] 自動検出: ...\playwright-browsers
 ```
+
+沒有自動偵測到也無妨——點「参照…」手動選擇即可。
 
 不需要設定環境變數、不需要安裝 Python、不需要連網。
 
@@ -65,8 +78,46 @@ sni-tool\
 | ターゲット URL | 完整 URL（可留空，預設 `https://<域名>/`） |
 | メッセンジャードメイン | 學校 / 公司放行且走 Cloudflare 的域名（例：`www.gov.tw`） |
 | ターゲット IP | 目標 IP。留空時自動用信使域名解析 |
-| ブラウザパス | Chromium 所在資料夾。留空用預設 |
+| ブラウザパス | Chromium 所在資料夾。留空用 Playwright 預設 |
+| 追加マッピング | 需要額外映射的第三方域名（見下方說明） |
 | ヘッドレスモード | 不顯示瀏覽器視窗 |
+
+---
+
+## 🔗 追加マッピング：處理跨域資源
+
+主域名下的**子域名會自動覆蓋**：
+
+- 目標填 `www.aiixi.cc` → 規則自動包含 `MAP www.aiixi.cc`、`MAP aiixi.cc`、`MAP *.aiixi.cc`
+- 頁面上的 `cdn.aiixi.cc`、`static.aiixi.cc` 等子域名全部走同一個 IP，無需手動設定
+
+只有以下情況需要在「追加マッピング」補充：
+
+1. 頁面引用了**其他域名**（如 `api.partner.com`、`cdn.other-site.net`）**且該域名也被封鎖**
+2. 該域名**不在 Cloudflare 上**，需要指定真實 IP
+
+格式（每行一個，`#` 開頭為註解）：
+
+```
+# 只寫域名 → 使用主 IP（對方在 CF 上時適用）
+api.partner.com
+
+# 域名 + IP → 使用指定 IP（對方不在 CF 上時適用）
+cdn.example.net 203.0.113.42
+```
+
+### 怎麼知道要補哪些域名？
+
+頁面載入完後，關閉瀏覽器視窗，日誌會列出所有失敗的請求：
+
+```
+[リクエスト失敗] net::ERR_NAME_NOT_RESOLVED - https://api.partner.com/v1/data
+...
+[注意] 以下のドメインでリクエストが失敗しました。必要なら「追加マッピング」に追加してください：
+  - api.partner.com
+```
+
+照著加進「追加マッピング」即可。
 
 ---
 
@@ -106,7 +157,7 @@ playwright install chromium
 
 **B. 把 `C:\playwright-browsers` 整個資料夾拷到目標電腦**（例如 `D:\tools\playwright-browsers`）
 
-**C. 在 GUI 的「ブラウザパス」欄位填入該路徑**，或把資料夾命名為 `playwright-browsers` 放在 `app.exe` 同目錄（自動偵測）
+**C. 把資料夾放在 exe 同目錄**（自動偵測），或在 GUI 的「ブラウザパス」欄位填入完整路徑
 
 程式會自動設定 `PLAYWRIGHT_BROWSERS_PATH`，**不需要**設定系統環境變數。
 
@@ -122,6 +173,14 @@ Chromium 支援 `--host-resolver-rules="MAP <域名> <IP>"` 啟動參數，
 具體路由到哪個客戶的源站由 SNI 決定。因此可以用「未被封鎖的 CF 域名解析出的 IP」
 去訪問「被封鎖但也在 CF 上的目標域名」。
 
+多條規則用逗號分隔，支援 `*.` 通配符：
+
+```
+--host-resolver-rules=MAP www.a.com [IP], MAP *.a.com [IP], MAP a.com [IP]
+```
+
+注意 `*.a.com` **不匹配** `a.com` 本身，所以裸域名要單獨一條。
+
 ---
 
 ## ❓ 常見問題
@@ -131,13 +190,18 @@ Chromium 支援 `--host-resolver-rules="MAP <域名> <IP>"` 啟動參數，
 瀏覽器路徑沒設對。三個檢查點：
 
 1. 「ブラウザパス」欄位是否填了正確路徑（要包含 `chromium-*` 子資料夾的那一層）
-2. 瀏覽器 zip 和 app zip 是否從**同一個 Release** 下載
+2. 瀏覽器 zip 和 exe 是否從**同一個 Release** 下載
 3. 日誌中 `[実行ファイル]` 那行指向的路徑是否存在
 
 ### Q：`421 Misdirected Request`
 
 Cloudflare 判斷 SNI 和 Host 不一致。通常是目標域名不在 Cloudflare 上，
 或信使 IP 和目標站點屬於不同的 CF 帳號 / 方案。
+
+### Q：頁面顯示出來但樣式 / 圖片跑不出來
+
+通常是子域名或第三方域名被封。看日誌裡的 `[リクエスト失敗]` 清單，
+把相關域名加進「追加マッピング」。
 
 ### Q：`/cdn-cgi/trace` 查不到節點
 
@@ -148,26 +212,57 @@ Cloudflare 判斷 SNI 和 Host 不一致。通常是目標域名不在 Cloudflar
 本工具**不修改 SNI**，只修改 DNS 解析結果。如果學校是基於 SNI 黑名單封鎖，
 本工具無效。請改用其他方案。
 
+### Q：exe 啟動很慢 / 被防毒軟體報毒
+
+onefile 模式每次啟動都會把內部檔案解壓到 `%TEMP%\_MEIxxxxx\`，
+首次啟動 10–30 秒屬正常。若 Windows Defender 或其他防毒軟體攔截，
+請把 exe 加入白名單（onefile 的解壓行為是 PyInstaller 正常機制，非惡意代碼）。
+
 ---
 
 ## 🛠 自行建置
 
-見 [.github/workflows/release.yml](.github/workflows/release.yml)。
-打上 `v*` 標籤（例如 `git tag v1.0.0 && git push --tags`）即自動觸發建置與發佈。
+### 使用 GitHub Actions（推薦）
 
-本機建置：
+見 [.github/workflows/release.yml](.github/workflows/release.yml)。
+打上 `v*` 標籤即自動觸發建置與發佈：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+CI 會自動：
+
+1. 用 PyInstaller `--onefile` 打包成單一 exe
+2. 用 `playwright install chromium` 下載瀏覽器並壓縮成 zip
+3. 兩者一起附到 Release
+
+### 本機建置
 
 ```bat
 pip install setuptools==81.0.0
 pip install -r requirements.txt
 pip install pyinstaller==5.13.2
 
-pyinstaller --onedir --console --clean --noupx ^
+pyinstaller --onefile --console --clean --noupx ^
   --collect-all=playwright ^
   --collect-all=customtkinter ^
   --hidden-import=greenlet ^
   --hidden-import=pyee ^
   app.py
+```
+
+> **提示**：如果偏好啟動更快的資料夾模式，把 `--onefile` 改成 `--onedir`。
+> 代價是分發時要壓縮整個 `dist/app/` 資料夾。
+
+### 手動準備瀏覽器 zip
+
+```powershell
+# PowerShell
+$env:PLAYWRIGHT_BROWSERS_PATH = "$PWD\browsers"
+python -m playwright install chromium
+Compress-Archive -Path "$env:PLAYWRIGHT_BROWSERS_PATH\*" -DestinationPath playwright-browsers.zip
 ```
 
 ---
