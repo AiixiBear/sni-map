@@ -264,9 +264,15 @@ def launch_browser(url, hostname, ip, browsers_path, headless, log=print):
         if headless:
             log(f"[HTML 長さ] {len(page.content())}")
             browser.close()
+        
         else:
             log("[ヒント] ブラウザを開きました。ウィンドウを閉じると終了します")
-            page.pause()
+            # 等待用户手动关闭浏览器窗口（不依赖 Inspector）
+            import threading
+            closed = threading.Event()
+            browser.on("disconnected", lambda _: closed.set())
+            closed.wait()
+            log("[終了] ブラウザが閉じられました")
 
 
 # GUI クラス定義
