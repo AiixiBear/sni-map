@@ -34,10 +34,10 @@
 
 ### 1. 到 [Releases](../../releases) 頁面下載**兩個**檔案
 
-| 檔案 | 內容 | 大小 |
-|---|---|---|
-| `sni-tool-vX.Y.Z-windows.exe` | 主程式（單一 exe，onefile） | 約 200–300 MB |
-| `playwright-browsers-vX.Y.Z-windows.zip` | Chromium 瀏覽器本體 | 約 150–200 MB（壓縮後） |
+| 檔案 | 內容 | 
+|---|---|
+| `sni-tool-vX.Y.Z-windows.exe` | 主程式（單一 exe，onefile） |
+| `playwright-browsers-vX.Y.Z-windows.zip` | Chromium 瀏覽器本體 |
 
 > ⚠️ **兩個檔案必須從同一個 Release 下載**。混用不同版本會導致啟動失敗。
 >
