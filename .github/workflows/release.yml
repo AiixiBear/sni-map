@@ -4,14 +4,19 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:   # 也可從 Actions 頁面手動觸發
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (例: v1.0.0)。空欄なら自動で dev tag を生成'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
   # ========================================================
-  # Job 1: 打包主程式（不含瀏覽器）
+  # Job 1: 打包主程式
   # ========================================================
   build-app:
     runs-on: windows-latest
@@ -32,7 +37,6 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==5.13.2
 
-      # 這一步不跑 playwright install —— 讓 app zip 不含瀏覽器
       - name: Build with PyInstaller
         run: |
           pyinstaller --onedir --console --clean --noupx `
@@ -45,17 +49,16 @@ jobs:
       - name: Package app
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          Compress-Archive -Path dist/app/* -DestinationPath "sni-tool-$tag-windows.zip"
+          Compress-Archive -Path dist/app/* -DestinationPath "sni-tool-windows.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: app-windows
-          path: sni-tool-*-windows.zip
+          path: sni-tool-windows.zip
           retention-days: 7
 
   # ========================================================
-  # Job 2: 打包 Chromium 瀏覽器
+  # Job 2: 打包瀏覽器
   # ========================================================
   build-browsers:
     runs-on: windows-latest
@@ -75,7 +78,7 @@ jobs:
       - name: Install playwright
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt   # 只要 playwright，不裝 pyinstaller
+          pip install -r requirements.txt
 
       - name: Get Playwright version
         id: pw
@@ -91,7 +94,6 @@ jobs:
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: playwright-win-${{ steps.pw.outputs.version }}
-          # 不設 restore-keys：版本升級時寧可重下，避免版本錯配
 
       - name: Install Chromium
         if: steps.cache.outputs.cache-hit != 'true'
@@ -100,7 +102,6 @@ jobs:
       - name: Verify browser path
         shell: pwsh
         run: |
-          Get-ChildItem $env:PLAYWRIGHT_BROWSERS_PATH | Format-Table Name
           $chromium = Get-ChildItem $env:PLAYWRIGHT_BROWSERS_PATH -Directory | Where-Object { $_.Name -like 'chromium-*' }
           if (-not $chromium) {
             Write-Error "chromium-* not found in $env:PLAYWRIGHT_BROWSERS_PATH"
@@ -110,14 +111,13 @@ jobs:
       - name: Package browsers
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
           Compress-Archive -Path "$env:PLAYWRIGHT_BROWSERS_PATH/*" `
-                           -DestinationPath "playwright-browsers-$tag-windows.zip"
+                           -DestinationPath "playwright-browsers-windows.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: browsers-windows
-          path: playwright-browsers-*-windows.zip
+          path: playwright-browsers-windows.zip
           retention-days: 7
 
   # ========================================================
@@ -133,11 +133,32 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -lh artifacts/
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.tag_name }}" ]; then
+            TAG="${{ inputs.tag_name }}"
+          else
+            TAG="v0.0.0-dev.${{ github.run_number }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $TAG"
+
+      - name: Rename artifacts with tag
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          cd artifacts
+          mv sni-tool-windows.zip "sni-tool-$TAG-windows.zip"
+          mv playwright-browsers-windows.zip "playwright-browsers-$TAG-windows.zip"
+          ls -lh
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
           files: artifacts/*.zip
           generate_release_notes: true
           body: |
