@@ -16,11 +16,11 @@ permissions:
 
 jobs:
   # ========================================================
-  # Job 1: 打包主程式
+  # Job 1: 打包主程式（onefile）
   # ========================================================
   build-app:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -37,24 +37,30 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==5.13.2
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (onefile)
+        shell: pwsh
         run: |
-          pyinstaller --onedir --console --clean --noupx `
+          pyinstaller --onefile --console --clean --noupx `
             --collect-all=playwright `
             --collect-all=customtkinter `
             --hidden-import=greenlet `
             --hidden-import=pyee `
             app.py
 
-      - name: Package app
+      - name: Verify build output
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/app/* -DestinationPath "sni-tool-windows.zip"
+          if (-not (Test-Path "dist/app.exe")) {
+            Write-Error "dist/app.exe not found"
+            exit 1
+          }
+          $size = (Get-Item "dist/app.exe").Length / 1MB
+          Write-Host "app.exe size: $size MB"
 
       - uses: actions/upload-artifact@v4
         with:
           name: app-windows
-          path: sni-tool-windows.zip
+          path: dist/app.exe
           retention-days: 7
 
   # ========================================================
@@ -112,16 +118,16 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "$env:PLAYWRIGHT_BROWSERS_PATH/*" `
-                           -DestinationPath "playwright-browsers-windows.zip"
+                           -DestinationPath "playwright-browsers.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: browsers-windows
-          path: playwright-browsers-windows.zip
+          path: playwright-browsers.zip
           retention-days: 7
 
   # ========================================================
-  # Job 3: 合併上傳 Release
+  # Job 3: 上傳 Release
   # ========================================================
   release:
     needs: [build-app, build-browsers]
@@ -152,22 +158,40 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           cd artifacts
-          mv sni-tool-windows.zip "sni-tool-$TAG-windows.zip"
-          mv playwright-browsers-windows.zip "playwright-browsers-$TAG-windows.zip"
+          echo "=== Before rename ==="
+          ls -lh
+          mv app.exe "sni-map-${TAG}-windows.exe"
+          mv playwright-browsers.zip "playwright-browsers-${TAG}-windows.zip"
+          echo "=== After rename ==="
           ls -lh
 
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          files: artifacts/*.zip
+          files: artifacts/*
           generate_release_notes: true
           body: |
             ## 📦 下載後如何使用
 
-            1. 下載**兩個** zip：`sni-tool-*-windows.zip` 和 `playwright-browsers-*-windows.zip`
-            2. 解壓到**同一個資料夾**（瀏覽器 zip 的內容要放在 `playwright-browsers\` 子目錄）
-            3. 雙擊 `app.exe`
+            | 檔案 | 說明 |
+            |---|---|
+            | `sni-tool-*-windows.exe` | 主程式（onefile，單一 exe） |
+            | `playwright-browsers-*-windows.zip` | Chromium 瀏覽器本體（**必須**） |
 
-            > ⚠️ **兩個 zip 必須從同一次 Release 下載**。混用不同版本會啟動失敗。
+            ### 使用步驟
+
+            1. 下載**兩個**檔案：`sni-tool-*-windows.exe` 和 `playwright-browsers-*-windows.zip`
+            2. 解壓 `playwright-browsers-*-windows.zip` 到 exe 同目錄，資料夾名稱保持為 `playwright-browsers`：
+              ```
+              sni-tool
+              ├── sni-tool-v1.0.0-windows.exe
+              └── playwright-browsers
+              └── chromium-XXXX\
+              ```
+            3. 雙擊 exe，程式會自動偵測 `playwright-browsers\`
+
+            > ⚠️ **exe 和瀏覽器必須從同一個 Release 下載**。混用不同版本會啟動失敗。
+            >
+            > ⏱ **首次啟動需等待 10–30 秒**（onefile 模式解壓到臨時目錄），第二次啟動稍快但仍需幾秒。
 
             詳細說明請見 [README](../blob/main/README.md)。
